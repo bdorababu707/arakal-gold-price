@@ -1,6 +1,7 @@
 from fastapi import WebSocket
 from typing import List
 from app.utils.log_setup import get_logger
+import asyncio
 
 logger = get_logger(__name__)
 
@@ -11,23 +12,29 @@ class WebSocketManager:
     async def connect(websocket: WebSocket):
         await websocket.accept()
         WebSocketManager.clients.append(websocket)
-        logger.info("Client connected. Total clients: %d", len(WebSocketManager.clients))
 
     @staticmethod
     async def disconnect(websocket: WebSocket):
         if websocket in WebSocketManager.clients:
             WebSocketManager.clients.remove(websocket)
-            logger.info("Client disconnected. Total clients: %d", len(WebSocketManager.clients))
 
     @staticmethod
     async def broadcast(message: dict):
+        if not WebSocketManager.clients:
+            return  # No clients, skip
+
+        # Create send tasks for all clients
+        tasks = [client.send_json(message) for client in WebSocketManager.clients]
+
+        # Run all sends concurrently, don't raise exceptions
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect clients that failed
         disconnected = []
-        for client in WebSocketManager.clients:
-            try:
-                await client.send_json(message)
-            except Exception as e:
-                logger.warning(f"Failed to send to client: {e}")
+        for client, result in zip(WebSocketManager.clients, results):
+            if isinstance(result, Exception):
                 disconnected.append(client)
 
+        # Remove failed clients
         for client in disconnected:
             await WebSocketManager.disconnect(client)

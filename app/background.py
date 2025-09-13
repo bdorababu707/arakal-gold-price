@@ -8,6 +8,7 @@ from app.utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 last_known = {"gold": None, "gold_last_updated": None, "silver": None, "silver_last_updated": None}
+health_error = None  # To track the last error
 
 async def fetch_live_price():
     async with aiohttp.ClientSession() as session:
@@ -32,8 +33,10 @@ async def fetch_live_price():
                 }
 
                 await WebSocketManager.broadcast(data)
+                health_error = None  # success
 
             except Exception as e:
-                logger.error("Error in price fetcher: %s", e)
+                # logger.error("Error in price fetcher: %s", e)
+                health_error = str(e)  # track last error
 
             await asyncio.sleep(0.5)
